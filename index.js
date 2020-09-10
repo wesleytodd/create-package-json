@@ -1,304 +1,220 @@
 'use strict'
-const create = require('@pkgjs/create')
-const fs = require('fs-extra')
 const path = require('path')
+const fs = require('fs-extra')
+const opta = require('opta')
 const parseList = require('safe-parse-list')
-const scopeAndName = require('./lib/scope-and-name')
-const npm = require('./lib/npm')
+const packageName = require('./lib/package-name')
 const git = require('./lib/git')
+const npm = require('./lib/npm')
 
-// @TODO https://docs.npmjs.com/files/package.json
-// exports
-// bin
-// funding
-// files
-// browser
-// directories
-// config
-// bundledDependencies
-// optionalDependencies
-// engines
-// os
-// cpu
-// publishConfig
-// homepage
-// bugs
-// contributors
+function initOpts () {
+  return opta({
+    commandDescription: 'Generate a package.json',
+    options: {
+      cwd: {
+        description: 'Directory to run in',
+        prompt: false,
+        flag: {
+          alias: 'd',
+          defaultDescription: 'process.cwd()',
+          default: () => process.cwd()
+        }
+      },
 
-module.exports = create({
-  commandDescription: 'Create a package.json',
-  options: {
-    // No prompts, just flags
-    pkgPath: {
-      type: 'string',
-      flag: {
-        key: 'existing-package'
+      ignoreExisting: {
+        description: 'Ignore existing files (& overwrite them)',
+        prompt: false,
+        flag: {
+          key: 'ignore-existing',
+          defaultDescription: 'false'
+        }
       },
-      prompt: false
-    },
-    scope: {
-      type: 'string',
-      prompt: false
-    },
-    scripts: {
-      type: 'string',
-      prompt: false
-    },
 
-    name: {
-      type: 'string',
-      prompt: {
-        message: 'Package name:',
-        validate: npm.validatePackageName
-      }
-    },
-    version: {
-      type: 'string',
-      flag: {
-        key: 'package-version'
+      name: {
+        type: 'string',
+        prompt: {
+          message: 'Package name:',
+          validate: npm.validatePackageName,
+          default: (promptInput, allInput) => {
+            return packageName(allInput.name, allInput.cwd)
+          }
+        }
       },
-      prompt: {
-        message: 'Version:'
-      }
-    },
-    description: {
-      type: 'string',
-      prompt: {
-        message: 'Description:'
-      }
-    },
-    author: {
-      type: 'string',
-      prompt: {
-        message: 'Author:'
-      }
-    },
-    repository: {
-      type: 'string',
-      prompt: {
-        message: 'Repository:'
-      }
-    },
-    keywords: {
-      type: 'string',
-      prompt: {
-        message: 'Keywords:',
-        filter: parseList
-      }
-    },
-    license: {
-      type: 'string',
-      default: 'ISC',
-      prompt: {
-        message: 'License:'
-      }
-    },
-    type: {
-      type: 'string',
-      prompt: {
-        message: 'Module Type:',
-        type: 'list',
-        choices: ['commonjs', 'module']
-      }
-    },
-    main: {
-      type: 'string',
-      default: 'index.js',
-      prompt: {
-        message: 'Main:'
-      }
-    },
-    private: {
-      advanced: true,
-      type: 'boolean',
-      prompt: {
-        message: 'Private package:',
-        default: false
-      }
-    },
-    dependencies: {
-      type: 'string',
-      prompt: {
-        message: 'Dependencies:',
-        filter: parseList,
-        validate: npm.validatePackageSpec
-      }
-    },
-    devDependencies: {
-      type: 'string',
-      flag: {
-        key: 'dev-dependencies'
+      version: {
+        type: 'string',
+        flag: {
+          key: 'package-version',
+          alias: 'V'
+        },
+        prompt: {
+          message: 'Initial version:',
+          default: (promptInput, allInput) => {
+            return allInput.version || '1.0.0'
+          }
+        }
       },
-      prompt: {
-        message: 'Dev Dependencies:',
-        filter: parseList,
-        validate: npm.validatePackageSpec
-      }
-    },
-    peerDependencies: {
-      advanced: true,
-      type: 'string',
-      flag: {
-        key: 'peer-dependencies'
+      description: {
+        type: 'string',
+        prompt: {
+          message: 'Description:'
+        }
       },
-      prompt: {
-        message: 'Peer Dependencies:',
-        filter: parseList,
-        validate: npm.validatePackageSpec
-      }
-    },
+      author: {
+        type: 'string',
+        prompt: {
+          message: 'Author:',
+          default: (promptInput, allInput) => {
+            return allInput.author || git.author({ cwd: allInput.cwd })
+          }
+        }
+      },
+      repository: {
+        type: 'string',
+        prompt: {
+          message: 'Repository:',
+          default: (promptInput, allInput) => {
+            return allInput.repository || git.remote({ cwd: allInput.cwd })
+          }
+        }
+      },
+      keywords: {
+        type: 'string',
+        prompt: {
+          message: 'Keywords:',
+          filter: parseList
+        }
+      },
+      // @TODO create a license generator
+      license: {
+        type: 'string',
+        default: 'ISC',
+        prompt: {
+          message: 'License:'
+        }
+      },
 
-    // Common npm scripts
-    scriptsTest: {
-      type: 'string',
-      flag: {
-        key: 'test'
+      type: {
+        type: 'string',
+        prompt: {
+          message: 'Module Type:',
+          type: 'list',
+          choices: ['commonjs', 'module'],
+          default: (promptInput, allInput) => {
+            return allInput.type || 'commonjs'
+          }
+        }
       },
-      prompt: {
-        message: 'Test script:'
-      }
-    },
-    scriptsPrepare: {
-      advanced: true,
-      type: 'string',
-      flag: {
-        key: 'prepare'
+      main: {
+        type: 'string',
+        prompt: {
+          message: 'Main:',
+          default: (promptInput, allInput) => {
+            return allInput.main || 'index.js'
+          }
+        }
       },
-      prompt: {
-        message: 'Prepare script:'
-      }
-    },
-    scriptsPostPublish: {
-      advanced: true,
-      type: 'string',
-      flag: {
-        key: 'post-publish'
+      private: {
+        type: 'boolean',
+        prompt: false
       },
-      prompt: {
-        message: 'Post publish script:'
-      }
-    },
-    scriptsPreVersion: {
-      advanced: true,
-      type: 'string',
-      flag: {
-        key: 'pre-version'
-      },
-      prompt: {
-        message: 'Pre version script:'
-      }
-    },
 
-    // Meta prompts
-    spacer: {
-      advanced: true,
-      type: 'string',
-      default: '  ',
-      flag: {
-        key: 'spacer'
+      dependencies: {
+        type: 'string',
+        prompt: {
+          message: 'Dependencies:',
+          filter: parseList,
+          validate: npm.validatePackageSpec
+        }
       },
-      prompt: {
-        message: 'JSON spacer character:'
-      }
-    },
-    // @TODO should this exist? or should people just do
-    // package@latest in their (dev)dependencies
-    // updateDeps: {
-    //   advanced: true,
-    //   type: 'boolean',
-    //   default: true,
-    //   flag: {
-    //     key: 'update-deps'
-    //   },
-    //   prompt: {
-    //     message: 'Update dependencies:'
-    //   }
-    // },
-    ignoreExisting: {
-      advanced: true,
-      type: 'boolean',
-      default: false,
-      prompt: false,
-      flag: {
-        key: 'ignore-existing'
-      }
-    },
-    saveExact: {
-      advanced: true,
-      type: 'boolean',
-      default: false,
-      flag: {
-        key: 'save-exact'
+      devDependencies: {
+        type: 'string',
+        flag: {
+          key: 'dev-dependencies'
+        },
+        prompt: {
+          message: 'Dev Dependencies:',
+          filter: parseList,
+          validate: npm.validatePackageSpec
+        }
       },
-      prompt: {
-        message: 'Save exact versions:'
+      peerDependencies: {
+        advanced: true,
+        type: 'string',
+        flag: {
+          key: 'peer-dependencies'
+        },
+        prompt: false
+      },
+
+      // @TODO detect from existing file
+      spacer: {
+        type: 'string',
+        default: '  ',
+        prompt: false
+      },
+
+      // Tell npm to save exact
+      saveExact: {
+        type: 'boolean',
+        default: false,
+        flag: {
+          key: 'save-exact'
+        },
+        prompt: false
       }
     }
-  },
-  initOptions: async (input) => {
-    const directory = input.directory || process.cwd()
-    const pkgPath = path.resolve(directory, input.pkgPath || 'package.json')
+  })
+}
 
-    // Read existing package.json
-    const pkg = input.ignoreExisting ? {} : await readPackageJson(pkgPath)
+module.exports = main
+async function main (input, _opts = {}) {
+  const options = initOpts()
+  options.overrides({
+    ...input,
+    cwd: input.cwd || process.cwd()
+  })
+  let opts = options.values()
 
-    // Derive defaults from input and existing package.json
-    const version = input.version || pkg.version || '1.0.0'
-    const name = scopeAndName(input.scope, input.name || pkg.name, directory)
-    const type = input.type || pkg.type || 'commonjs'
-    const author = input.author || pkg.author || await git.author()
-    const description = input.description || pkg.description
-    const repository = input.repository || (pkg.repository && pkg.repository.url) || await git.remote(input)
-    const keywords = parseList(input.keywords || pkg.keywords)
+  // Read current state and set defaults
+  const pkg = opts.ignoreExisting ? {} : await readPackageJson(options)
 
-    // Dependencies
-    const dependencies = parseList(input.dependencies)
-    const devDependencies = parseList(input.devDependencies)
-    const peerDependencies = parseList(input.peerDependencies)
+  await options.prompt({
+    promptor: _opts.promptor
+  })()
 
-    // Derive standard scripts
-    const scriptsTest = input.scriptsTest || (pkg.scripts && pkg.scripts.test) || 'echo "Error: no test specified" && exit 1'
-    const scriptsPrepare = input.scriptsPrepare || (pkg.scripts && pkg.scripts.prepare)
-    const scriptsPreVersion = input.scriptsPreVersion || (pkg.scripts && pkg.scripts.preversion)
-    const scriptsPostPublish = input.scriptsPostPublish || (pkg.scripts && pkg.scripts.postpublish)
+  opts = options.values()
+  return write(path.resolve(opts.cwd, 'package.json'), opts, await format(opts, pkg))
+}
 
-    return {
-      pkg,
-      directory,
-      pkgPath,
-      version,
-      name,
-      type,
-      description,
-      author,
-      repository,
-      keywords,
-      dependencies,
-      devDependencies,
-      peerDependencies,
-      scriptsTest,
-      scriptsPrepare,
-      scriptsPreVersion,
-      scriptsPostPublish
-    }
-  }
-}, async (initOpts) => {
-  // Process options & prompt for input
-  const opts = await initOpts()
-
-  // Format the json and write it out
-  return write(opts.pkgPath, opts, await format(opts, opts.pkg))
-})
+module.exports.options = initOpts().options
+module.exports.cli = function () {
+  return initOpts().cli((yargs) => {
+    yargs.command('$0', 'Generate a package.json', () => {}, main)
+  })
+}
 
 module.exports.readPackageJson = readPackageJson
-async function readPackageJson (pkgPath, opts = {}) {
+async function readPackageJson (options) {
+  const opts = options.values()
   let pkg = {}
   try {
-    pkg = await fs.readJSON(pkgPath)
+    pkg = await fs.readJSON(path.resolve(opts.cwd, 'package.json'))
   } catch (e) {
     // @TODO log this?
     // ignore if missing or unreadable
   }
+
+  // Set defaults from the package.json
+  options.defaults({
+    version: pkg.version,
+    name: pkg.name,
+    type: pkg.type,
+    author: pkg.author,
+    description: pkg.description,
+    repository: pkg.repository && pkg.repository.url,
+    keywords: pkg.keywords
+  })
+
   return pkg
 }
 
@@ -316,12 +232,12 @@ async function format (opts, pkg = {}) {
   }
 
   // Scripts
-  pkg.scripts = Object.assign({}, {
-    test: opts.scriptsTest,
-    prepare: opts.scriptsPrepare,
-    preversion: opts.scriptsPreVersion,
-    postpublish: opts.scriptsPostPublish
-  }, opts.scripts)
+  // pkg.scripts = Object.assign({}, {
+  //   test: opts.scriptsTest,
+  //   prepare: opts.scriptsPrepare,
+  //   preversion: opts.scriptsPreVersion,
+  //   postpublish: opts.scriptsPostPublish
+  // }, opts.scripts)
 
   pkg.author = opts.author || ''
   pkg.license = opts.license
@@ -372,14 +288,12 @@ async function write (pkgPath, opts, pkg) {
   // Run installs
   await npm.install(opts.dependencies, {
     save: 'prod',
-    directory: opts.directory,
-    silent: opts.silent,
+    directory: opts.cwd,
     exact: opts.saveExact
   })
   await npm.install(opts.devDependencies, {
     save: 'dev',
-    directory: opts.directory,
-    silent: opts.silent,
+    directory: opts.cwd,
     exact: opts.saveExact
   })
 
